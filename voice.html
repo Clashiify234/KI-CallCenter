@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Agent - KI CallCenter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #000000; display: flex; height: 100vh; margin: 0; color: white; overflow: hidden; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+
+        .info-card { background: #171717; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; }
+
+        .sidebar-collapsed { width: 60px !important; padding: 12px 6px !important; }
+        .sidebar-collapsed .sidebar-hide { display: none !important; }
+        .sidebar-collapsed .sidebar-header { justify-content: center !important; margin-bottom: 16px !important; }
+        .sidebar-collapsed .sidebar-header > *:not(.sidebar-logo) { display: none !important; }
+        .sidebar-collapsed nav { gap: 4px !important; align-items: center; }
+        .sidebar-collapsed nav a { justify-content: center; padding: 10px; border-radius: 12px; width: 44px; height: 44px; margin: 0 auto; }
+        .sidebar-collapsed nav a span { display: none !important; }
+        aside { transition: width 0.2s ease; }
+        input, textarea, select { font-size: 16px !important; }
+        @supports (height: 100dvh) { body { height: 100dvh; } }
+        * { -webkit-overflow-scrolling: touch; -webkit-tap-highlight-color: transparent; }
+
+        @media (max-width: 1024px) {
+            #sidebar { width: 88px !important; padding: 12px 8px !important; }
+            #sidebar .sidebar-hide { display: none !important; }
+            #sidebar nav a { flex-direction: column; justify-content: center; align-items: center; padding: 10px 4px; border-radius: 12px; gap: 4px !important; }
+            #sidebar nav a span { display: block !important; font-size: 10px !important; opacity: 0.7; }
+            #sidebar nav a svg { margin: 0; width: 24px; height: 24px; }
+        }
+        @media (max-width: 768px) {
+            #sidebar { position: fixed !important; left: -300px; top: 0; height: 100vh; z-index: 1000; width: 280px !important; transition: left 0.3s ease; }
+            #sidebar.mobile-open { left: 0; }
+            #sidebar .sidebar-hide { display: flex !important; }
+            .mobile-backdrop { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 999; }
+            .mobile-backdrop.active { display: block; }
+            .mobile-menu-btn { display: flex !important; }
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 1; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+        .pulse-ring { animation: pulse-ring 1.5s ease-out infinite; }
+    </style>
+</head>
+<body class="antialiased">
+
+<button class="mobile-menu-btn" style="display:none;position:fixed;top:12px;left:12px;z-index:998;background:#232323;border:1px solid #333;border-radius:8px;padding:8px;color:white;cursor:pointer;" onclick="document.getElementById('sidebar').classList.add('mobile-open');document.getElementById('mobile-backdrop').classList.add('active')">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+</button>
+<div class="mobile-backdrop" id="mobile-backdrop" onclick="document.getElementById('sidebar').classList.remove('mobile-open');this.classList.remove('active')"></div>
+
+<aside id="sidebar" class="w-[280px] h-full bg-[#171717] flex flex-col p-4 border-r border-[#2a2a2a] shrink-0">
+    <div class="sidebar-header flex items-center justify-between mb-8 px-1 mt-1">
+        <a href="index.html" class="sidebar-logo text-white hover:opacity-80 transition-opacity flex items-center gap-2">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            <span class="sidebar-hide font-semibold text-[15px]">KI CallCenter</span>
+        </a>
+        <div class="flex items-center gap-3 sidebar-hide">
+            <button id="sidebar-toggle-btn" class="text-[#a0a0a0] bg-[#232323] border border-[#2e2e2e] p-1.5 rounded-lg hover:text-white hover:bg-[#252525] transition-colors">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3" ry="3"></rect><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+            </button>
+        </div>
+    </div>
+    <nav class="flex flex-col gap-1.5 px-1">
+        <a href="index.html" class="flex items-center gap-3.5 py-2 px-3 rounded-lg hover:bg-[#232323] transition-colors text-[#e0e0e0] hover:text-white"><svg class="shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="text-[15px] font-medium sidebar-hide">Dashboard</span></a>
+        <a href="chat.html" class="flex items-center gap-3.5 py-2 px-3 rounded-lg hover:bg-[#232323] transition-colors text-[#e0e0e0] hover:text-white"><svg class="shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span class="text-[15px] font-medium sidebar-hide">Chat Agent</span></a>
+        <a href="voice.html" class="flex items-center gap-3.5 py-2 px-3 rounded-lg bg-[#232323] text-white"><svg class="shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="text-[15px] font-medium sidebar-hide">Voice Agent</span></a>
+        <a href="knowledge.html" class="flex items-center gap-3.5 py-2 px-3 rounded-lg hover:bg-[#232323] transition-colors text-[#e0e0e0] hover:text-white"><svg class="shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span class="text-[15px] font-medium sidebar-hide">Knowledge Base</span></a>
+        <a href="tickets.html" class="flex items-center gap-3.5 py-2 px-3 rounded-lg hover:bg-[#232323] transition-colors text-[#e0e0e0] hover:text-white"><svg class="shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span class="text-[15px] font-medium sidebar-hide">Tickets</span></a>
+        <a href="analytics.html" class="flex items-center gap-3.5 py-2 px-3 rounded-lg hover:bg-[#232323] transition-colors text-[#e0e0e0] hover:text-white"><svg class="shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span class="text-[15px] font-medium sidebar-hide">Analytics</span></a>
+        <a href="settings.html" class="flex items-center gap-3.5 py-2 px-3 rounded-lg hover:bg-[#232323] transition-colors text-[#e0e0e0] hover:text-white"><svg class="shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="text-[15px] font-medium sidebar-hide">Settings</span></a>
+    </nav>
+</aside>
+
+<!-- Main Content -->
+<main class="flex-1 overflow-y-auto p-8">
+    <div class="max-w-4xl mx-auto">
+        <div class="mb-8">
+            <h1 class="text-2xl font-semibold mb-1">Voice Agent</h1>
+            <p class="text-[#888] text-[15px]">Telefon-KI-Agent via Synthflow (Phase 2)</p>
+        </div>
+
+        <!-- Status Card -->
+        <div class="info-card mb-6">
+            <div class="flex items-center gap-4 mb-6">
+                <div class="relative">
+                    <div class="w-16 h-16 rounded-full bg-[#232323] border border-[#333] flex items-center justify-center">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                    </div>
+                </div>
+                <div>
+                    <h2 class="text-lg font-semibold">Synthflow Voice Agent</h2>
+                    <p class="text-[#666] text-[13px]">Noch nicht konfiguriert</p>
+                </div>
+                <div class="ml-auto">
+                    <span class="text-[12px] px-3 py-1 rounded-full bg-[#232323] border border-[#333] text-[#666]">Phase 2</span>
+                </div>
+            </div>
+            <p class="text-[#888] text-[14px] leading-relaxed">Der Voice Agent wird in Phase 2 des Projekts aufgesetzt. Erst wird der Chat Agent in Voiceflow stabilisiert, dann kommt Synthflow als zweiter Kanal dazu.</p>
+        </div>
+
+        <!-- Setup Steps -->
+        <div class="info-card mb-6">
+            <h2 class="text-[15px] font-semibold mb-4">Setup-Schritte (Woche 4)</h2>
+            <div class="space-y-4">
+                <div class="flex items-start gap-3">
+                    <div class="w-6 h-6 rounded-full border border-[#333] flex items-center justify-center shrink-0 mt-0.5">
+                        <span class="text-[11px] text-[#666]">1</span>
+                    </div>
+                    <div>
+                        <p class="text-[14px] text-[#ccc]">Synthflow Account erstellen</p>
+                        <p class="text-[12px] text-[#666]">Pay-as-you-go Plan (~0,04$/Minute)</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3">
+                    <div class="w-6 h-6 rounded-full border border-[#333] flex items-center justify-center shrink-0 mt-0.5">
+                        <span class="text-[11px] text-[#666]">2</span>
+                    </div>
+                    <div>
+                        <p class="text-[14px] text-[#ccc]">Voice Agent Flow erstellen</p>
+                        <p class="text-[12px] text-[#666]">Visueller Flow Designer mit Subflows</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3">
+                    <div class="w-6 h-6 rounded-full border border-[#333] flex items-center justify-center shrink-0 mt-0.5">
+                        <span class="text-[11px] text-[#666]">3</span>
+                    </div>
+                    <div>
+                        <p class="text-[14px] text-[#ccc]">Telefonnummer zuweisen</p>
+                        <p class="text-[12px] text-[#666]">Direkt in Synthflow, ohne Twilio</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3">
+                    <div class="w-6 h-6 rounded-full border border-[#333] flex items-center justify-center shrink-0 mt-0.5">
+                        <span class="text-[11px] text-[#666]">4</span>
+                    </div>
+                    <div>
+                        <p class="text-[14px] text-[#ccc]">Claude als LLM Backend einbinden</p>
+                        <p class="text-[12px] text-[#666]">System Prompt + Knowledge Base</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3">
+                    <div class="w-6 h-6 rounded-full border border-[#333] flex items-center justify-center shrink-0 mt-0.5">
+                        <span class="text-[11px] text-[#666]">5</span>
+                    </div>
+                    <div>
+                        <p class="text-[14px] text-[#ccc]">Webhook an Make.com konfigurieren</p>
+                        <p class="text-[12px] text-[#666]">Für Ticket-Erstellung und Eskalation</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Specs -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="info-card">
+                <h3 class="text-[14px] font-semibold mb-3">Spezifikationen</h3>
+                <div class="space-y-2 text-[13px]">
+                    <div class="flex justify-between"><span class="text-[#888]">Latenz</span><span class="text-[#ccc]">&lt; 500ms</span></div>
+                    <div class="flex justify-between"><span class="text-[#888]">Sprachen</span><span class="text-[#ccc]">Deutsch, Englisch</span></div>
+                    <div class="flex justify-between"><span class="text-[#888]">STT Engine</span><span class="text-[#ccc]">Integriert</span></div>
+                    <div class="flex justify-between"><span class="text-[#888]">TTS Engine</span><span class="text-[#ccc]">Integriert</span></div>
+                    <div class="flex justify-between"><span class="text-[#888]">Kosten</span><span class="text-[#ccc]">~0,04$/Min</span></div>
+                </div>
+            </div>
+            <div class="info-card">
+                <h3 class="text-[14px] font-semibold mb-3">Geplante Flows</h3>
+                <div class="space-y-2 text-[13px]">
+                    <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-[#555]"></div><span class="text-[#ccc]">Bestellstatus abfragen</span></div>
+                    <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-[#555]"></div><span class="text-[#ccc]">Retoure einleiten</span></div>
+                    <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-[#555]"></div><span class="text-[#ccc]">Beschwerde aufnehmen</span></div>
+                    <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-[#555]"></div><span class="text-[#ccc]">FAQ beantworten</span></div>
+                    <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-[#555]"></div><span class="text-[#ccc]">Eskalation an Mensch</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+document.getElementById('sidebar-toggle-btn')?.addEventListener('click', () => {
+    document.getElementById('sidebar').classList.toggle('sidebar-collapsed');
+});
+</script>
+</body>
+</html>
