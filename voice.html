@@ -381,118 +381,108 @@ function endCall() {
 }
 
 // ============ Speech Recognition with Silence Detection ============
-function startListening() {
-    console.log('[LISTEN] startListening called — active:', callActive, 'processing:', isProcessing, 'speaking:', isSpeaking, 'muted:', isMuted);
-    if (!callActive || isProcessing || isSpeaking || isMuted) {
-        console.log('[LISTEN] Aborted — guard condition failed');
-        return;
-    }
+function createRecognition() {
+    const rec = new SpeechRecognition();
+    rec.lang = 'de-DE';
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
 
-    transcriptText = '';
-    interimTranscript = '';
-    document.getElementById('live-text').textContent = '';
-
-    recognition = new SpeechRecognition();
-    recognition.lang = 'de-DE';
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    setStatus('listening', 'Hört zu...');
-    startWaveform();
-
-    let hasReceivedSpeech = false;
-
-    recognition.onresult = (event) => {
-        console.log('[STT] Got result, results count:', event.results.length);
-        if (!callActive) return;
+    rec.onresult = (event) => {
+        if (!callActive || isProcessing) return;
 
         let allFinal = '';
         let currentInterim = '';
-
         for (let i = 0; i < event.results.length; i++) {
-            const result = event.results[i];
-            if (result.isFinal) {
-                allFinal += result[0].transcript;
+            if (event.results[i].isFinal) {
+                allFinal += event.results[i][0].transcript;
             } else {
-                currentInterim += result[0].transcript;
+                currentInterim += event.results[i][0].transcript;
             }
         }
 
         transcriptText = allFinal;
         interimTranscript = currentInterim;
-        hasReceivedSpeech = true;
-
-        // Live display
         const displayText = (transcriptText + ' ' + interimTranscript).trim();
         document.getElementById('live-text').textContent = displayText;
+        console.log('[STT] Heard:', displayText);
 
-        // Reset silence timer on every result
+        // Reset silence timer
         clearTimeout(silenceTimer);
         silenceTimer = setTimeout(() => {
-            // Silence detected — send what we have
-            if (callActive && !isProcessing && !isSpeaking) {
-                const finalText = (transcriptText + ' ' + interimTranscript).trim();
-                if (finalText) {
-                    stopRecognition();
-                    stopWaveform();
-                    processUserInput(finalText);
-                }
+            if (!callActive || isProcessing || isSpeaking) return;
+            const finalText = (transcriptText + ' ' + interimTranscript).trim();
+            if (finalText) {
+                console.log('[STT] Silence detected, sending:', finalText);
+                stopRecognition();
+                processUserInput(finalText);
             }
         }, SILENCE_TIMEOUT);
     };
 
-    recognition.onerror = (event) => {
+    rec.onerror = (event) => {
         console.log('[STT] Error:', event.error);
-        if (event.error === 'no-speech') {
-            if (callActive && !isProcessing && !isSpeaking) restartListening();
-        } else if (event.error === 'not-allowed') {
-            console.error('[STT] Microphone permission denied for Speech Recognition');
+        if (event.error === 'not-allowed') {
             addTranscript('system', 'Spracherkennung blockiert — erlaube Mikrofon-Zugriff');
-        } else if (event.error !== 'aborted') {
-            if (callActive && !isProcessing && !isSpeaking) restartListening();
         }
+        // All other errors: let onend handle restart
     };
 
-    recognition.onend = () => {
-        console.log('[STT] Recognition ended');
-        // Auto-restart if we're supposed to be listening
-        if (callActive && !isProcessing && !isSpeaking && !isMuted) {
-            // Check if we have pending text that should be sent
-            const pendingText = (transcriptText + ' ' + interimTranscript).trim();
-            if (pendingText && hasReceivedSpeech) {
-                clearTimeout(silenceTimer);
-                stopWaveform();
-                processUserInput(pendingText);
-            } else {
-                restartListening();
+    rec.onend = () => {
+        console.log('[STT] Ended. processing:', isProcessing, 'speaking:', isSpeaking);
+        // Don't restart if we're processing or speaking — processUserInput will call startListening when done
+        if (!callActive || isProcessing || isSpeaking || isMuted) return;
+        // Auto-restart with fresh instance
+        setTimeout(() => {
+            if (callActive && !isProcessing && !isSpeaking && !isMuted) {
+                console.log('[STT] Auto-restarting...');
+                startListening();
             }
-        }
+        }, 100);
     };
 
+    return rec;
+}
+
+function startListening() {
+    console.log('[LISTEN] startListening called');
+    if (!callActive || isProcessing || isSpeaking || isMuted) {
+        console.log('[LISTEN] Blocked:', { callActive, isProcessing, isSpeaking, isMuted });
+        return;
+    }
+
+    // Kill old instance completely
+    stopRecognition();
+
+    transcriptText = '';
+    interimTranscript = '';
+    document.getElementById('live-text').textContent = '';
+    setStatus('listening', 'Hört zu...');
+
+    // Start waveform once for the call
+    if (!animFrame) startWaveform();
+
+    // Always fresh instance
+    recognition = createRecognition();
     try {
         recognition.start();
-        console.log('[STT] Recognition started successfully');
+        console.log('[STT] Started fresh instance');
     } catch (e) {
-        console.error('[STT] Failed to start recognition:', e);
-        setTimeout(() => { if (callActive && !isProcessing && !isSpeaking) startListening(); }, 300);
+        console.error('[STT] Start failed:', e);
+        recognition = null;
     }
 }
 
 function stopRecognition() {
     clearTimeout(silenceTimer);
     if (recognition) {
-        recognition.onend = null;
-        recognition.onerror = null;
-        try { recognition.abort(); } catch (e) {}
+        const r = recognition;
         recognition = null;
+        r.onend = null;
+        r.onerror = null;
+        r.onresult = null;
+        try { r.abort(); } catch (e) {}
     }
-}
-
-function restartListening() {
-    stopRecognition();
-    setTimeout(() => {
-        if (callActive && !isProcessing && !isSpeaking && !isMuted) startListening();
-    }, 200);
 }
 
 // ============ Process Input → Streaming Claude → TTS ============
@@ -580,8 +570,9 @@ async function processUserInput(text) {
     isProcessing = false;
     isSpeaking = false;
 
-    // Auto-loop: go back to listening
+    // Auto-loop: immediately go back to listening
     if (callActive && !isMuted) {
+        console.log('[CALL] Agent done speaking, starting listening immediately');
         startListening();
     }
 }
@@ -663,8 +654,8 @@ async function speakTTS(text, preloadedBlob) {
         try {
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'de-DE';
-            utterance.rate = 0.95;
-            utterance.pitch = 0.9;
+            utterance.rate = 1.05;
+            utterance.pitch = 0.95;
 
             let resolved = false;
             const browserTimeout = setTimeout(() => {
