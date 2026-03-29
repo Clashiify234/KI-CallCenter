@@ -12,8 +12,6 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
 
-        .info-card { background: #171717; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; }
-
         .sidebar-collapsed { width: 60px !important; padding: 12px 6px !important; }
         .sidebar-collapsed .sidebar-hide { display: none !important; }
         .sidebar-collapsed .sidebar-header { justify-content: center !important; margin-bottom: 16px !important; }
@@ -42,11 +40,49 @@
             .mobile-menu-btn { display: flex !important; }
         }
 
+        /* Call UI */
         @keyframes pulse-ring {
-            0% { transform: scale(0.8); opacity: 1; }
-            100% { transform: scale(2); opacity: 0; }
+            0% { transform: scale(1); opacity: 0.6; }
+            100% { transform: scale(1.8); opacity: 0; }
         }
-        .pulse-ring { animation: pulse-ring 1.5s ease-out infinite; }
+        @keyframes breathe {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .pulse-ring { animation: pulse-ring 2s ease-out infinite; }
+        .breathe { animation: breathe 3s ease-in-out infinite; }
+
+        .call-btn {
+            width: 96px; height: 96px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.3s ease; border: none; position: relative;
+        }
+        .call-btn-start { background: #22c55e; }
+        .call-btn-start:hover { background: #16a34a; transform: scale(1.05); }
+        .call-btn-end { background: #ef4444; }
+        .call-btn-end:hover { background: #dc2626; transform: scale(1.05); }
+
+        .wave-bar {
+            width: 3px; border-radius: 2px; background: white;
+            min-height: 4px; transition: height 0.08s ease-out;
+        }
+
+        .transcript-bubble {
+            padding: 12px 16px; border-radius: 16px; max-width: 85%;
+            animation: fadeSlide 0.3s ease-out;
+        }
+        @keyframes fadeSlide {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .transcript-user { background: #232323; border: 1px solid #2a2a2a; margin-left: auto; }
+        .transcript-agent { background: #171717; border: 1px solid #2a2a2a; margin-right: auto; }
+
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-idle { background: #555; }
+        .status-listening { background: #22c55e; animation: breathe 1.5s ease-in-out infinite; }
+        .status-thinking { background: #eab308; animation: breathe 1s ease-in-out infinite; }
+        .status-speaking { background: #3b82f6; animation: breathe 1s ease-in-out infinite; }
     </style>
 </head>
 <body class="antialiased">
@@ -56,6 +92,7 @@
 </button>
 <div class="mobile-backdrop" id="mobile-backdrop" onclick="document.getElementById('sidebar').classList.remove('mobile-open');this.classList.remove('active')"></div>
 
+<!-- Sidebar -->
 <aside id="sidebar" class="w-[280px] h-full bg-[#171717] flex flex-col p-4 border-r border-[#2a2a2a] shrink-0">
     <div class="sidebar-header flex items-center justify-between mb-8 px-1 mt-1">
         <a href="index.html" class="sidebar-logo text-white hover:opacity-80 transition-opacity flex items-center gap-2">
@@ -80,114 +117,722 @@
 </aside>
 
 <!-- Main Content -->
-<main class="flex-1 overflow-y-auto p-8">
-    <div class="max-w-4xl mx-auto">
-        <div class="mb-8">
-            <h1 class="text-2xl font-semibold mb-1">Voice Agent</h1>
-            <p class="text-[#888] text-[15px]">Telefon-KI-Agent via Synthflow (Phase 2)</p>
-        </div>
+<main class="flex-1 flex flex-col overflow-hidden">
 
-        <!-- Status Card -->
-        <div class="info-card mb-6">
-            <div class="flex items-center gap-4 mb-6">
-                <div class="relative">
-                    <div class="w-16 h-16 rounded-full bg-[#232323] border border-[#333] flex items-center justify-center">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                    </div>
-                </div>
-                <div>
-                    <h2 class="text-lg font-semibold">Synthflow Voice Agent</h2>
-                    <p class="text-[#666] text-[13px]">Noch nicht konfiguriert</p>
-                </div>
-                <div class="ml-auto">
-                    <span class="text-[12px] px-3 py-1 rounded-full bg-[#232323] border border-[#333] text-[#666]">Phase 2</span>
-                </div>
+    <!-- Header -->
+    <div class="border-b border-[#2a2a2a] px-6 py-4 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-3">
+            <h1 class="text-lg font-semibold">Voice Agent</h1>
+            <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-[#171717] border border-[#2a2a2a]">
+                <div class="status-dot status-idle" id="status-dot"></div>
+                <span class="text-[12px] text-[#888]" id="status-label">Bereit</span>
             </div>
-            <p class="text-[#888] text-[14px] leading-relaxed">Der Voice Agent wird in Phase 2 des Projekts aufgesetzt. Erst wird der Chat Agent in Voiceflow stabilisiert, dann kommt Synthflow als zweiter Kanal dazu.</p>
         </div>
+        <div class="flex items-center gap-3">
+            <span class="text-[13px] text-[#555] font-mono" id="call-timer">00:00</span>
+            <select id="voice-select" class="bg-[#171717] border border-[#2a2a2a] rounded-lg px-3 py-1.5 text-[12px] text-[#ccc] focus:outline-none">
+                <option value="">Stimmen laden...</option>
+            </select>
+            <button onclick="previewVoice()" class="w-8 h-8 rounded-lg bg-[#232323] border border-[#333] flex items-center justify-center text-[#888] hover:text-white hover:border-[#555] transition-colors" title="Stimme testen">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </button>
+        </div>
+    </div>
 
-        <!-- Setup Steps -->
-        <div class="info-card mb-6">
-            <h2 class="text-[15px] font-semibold mb-4">Setup-Schritte (Woche 4)</h2>
-            <div class="space-y-4">
-                <div class="flex items-start gap-3">
-                    <div class="w-6 h-6 rounded-full border border-[#333] flex items-center justify-center shrink-0 mt-0.5">
-                        <span class="text-[11px] text-[#666]">1</span>
+    <!-- Call Area -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+
+        <!-- Transcript Panel -->
+        <div class="flex-1 overflow-y-auto px-6 py-4" id="transcript-panel">
+            <div class="max-w-2xl mx-auto space-y-3" id="transcript-messages">
+                <!-- Welcome state -->
+                <div class="text-center py-16" id="welcome-state">
+                    <div class="relative inline-flex items-center justify-center mb-8">
+                        <div class="w-24 h-24 rounded-full bg-[#171717] border border-[#2a2a2a] flex items-center justify-center">
+                            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                <line x1="12" y1="19" x2="12" y2="22"></line>
+                            </svg>
+                        </div>
                     </div>
-                    <div>
-                        <p class="text-[14px] text-[#ccc]">Synthflow Account erstellen</p>
-                        <p class="text-[12px] text-[#666]">Pay-as-you-go Plan (~0,04$/Minute)</p>
-                    </div>
-                </div>
-                <div class="flex items-start gap-3">
-                    <div class="w-6 h-6 rounded-full border border-[#333] flex items-center justify-center shrink-0 mt-0.5">
-                        <span class="text-[11px] text-[#666]">2</span>
-                    </div>
-                    <div>
-                        <p class="text-[14px] text-[#ccc]">Voice Agent Flow erstellen</p>
-                        <p class="text-[12px] text-[#666]">Visueller Flow Designer mit Subflows</p>
-                    </div>
-                </div>
-                <div class="flex items-start gap-3">
-                    <div class="w-6 h-6 rounded-full border border-[#333] flex items-center justify-center shrink-0 mt-0.5">
-                        <span class="text-[11px] text-[#666]">3</span>
-                    </div>
-                    <div>
-                        <p class="text-[14px] text-[#ccc]">Telefonnummer zuweisen</p>
-                        <p class="text-[12px] text-[#666]">Direkt in Synthflow, ohne Twilio</p>
-                    </div>
-                </div>
-                <div class="flex items-start gap-3">
-                    <div class="w-6 h-6 rounded-full border border-[#333] flex items-center justify-center shrink-0 mt-0.5">
-                        <span class="text-[11px] text-[#666]">4</span>
-                    </div>
-                    <div>
-                        <p class="text-[14px] text-[#ccc]">Claude als LLM Backend einbinden</p>
-                        <p class="text-[12px] text-[#666]">System Prompt + Knowledge Base</p>
-                    </div>
-                </div>
-                <div class="flex items-start gap-3">
-                    <div class="w-6 h-6 rounded-full border border-[#333] flex items-center justify-center shrink-0 mt-0.5">
-                        <span class="text-[11px] text-[#666]">5</span>
-                    </div>
-                    <div>
-                        <p class="text-[14px] text-[#ccc]">Webhook an Make.com konfigurieren</p>
-                        <p class="text-[12px] text-[#666]">Für Ticket-Erstellung und Eskalation</p>
-                    </div>
+                    <h2 class="text-xl font-semibold mb-2">Voice Agent</h2>
+                    <p class="text-[#666] text-[14px] max-w-sm mx-auto mb-2">Sprich mit deinem KI Contact Center. Klicke auf den grünen Button, um einen Anruf zu starten.</p>
+                    <p class="text-[#444] text-[12px] max-w-sm mx-auto">STT: Browser Speech API / TTS: ElevenLabs / LLM: Claude</p>
                 </div>
             </div>
         </div>
 
-        <!-- Specs -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="info-card">
-                <h3 class="text-[14px] font-semibold mb-3">Spezifikationen</h3>
-                <div class="space-y-2 text-[13px]">
-                    <div class="flex justify-between"><span class="text-[#888]">Latenz</span><span class="text-[#ccc]">&lt; 500ms</span></div>
-                    <div class="flex justify-between"><span class="text-[#888]">Sprachen</span><span class="text-[#ccc]">Deutsch, Englisch</span></div>
-                    <div class="flex justify-between"><span class="text-[#888]">STT Engine</span><span class="text-[#ccc]">Integriert</span></div>
-                    <div class="flex justify-between"><span class="text-[#888]">TTS Engine</span><span class="text-[#ccc]">Integriert</span></div>
-                    <div class="flex justify-between"><span class="text-[#888]">Kosten</span><span class="text-[#ccc]">~0,04$/Min</span></div>
-                </div>
+        <!-- Waveform Visualizer -->
+        <div class="h-16 flex items-center justify-center gap-[3px] px-6" id="waveform-container" style="display:none;">
+            <div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div>
+            <div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div>
+            <div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div>
+            <div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div>
+            <div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div>
+            <div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div>
+            <div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div>
+            <div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div>
+            <div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div>
+            <div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div><div class="wave-bar" style="height:4px"></div>
+        </div>
+
+        <!-- Live transcription preview -->
+        <div class="px-6 h-10 flex items-center justify-center" id="live-text-container" style="display:none;">
+            <p class="text-[13px] text-[#666] italic truncate max-w-lg" id="live-text"></p>
+        </div>
+
+        <!-- Call Controls -->
+        <div class="flex items-center justify-center gap-6 py-8 border-t border-[#2a2a2a]">
+            <!-- Mute button (during call) -->
+            <button id="mute-btn" class="w-12 h-12 rounded-full bg-[#232323] border border-[#333] flex items-center justify-center text-[#888] hover:text-white hover:border-[#555] transition-colors" style="display:none;" onclick="toggleMute()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" id="mute-icon">
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="22"></line>
+                </svg>
+            </button>
+
+            <!-- Main call button -->
+            <div class="relative">
+                <div class="absolute inset-0 rounded-full bg-green-500/30 pulse-ring" id="pulse-ring" style="display:none;"></div>
+                <button class="call-btn call-btn-start" id="call-btn" onclick="toggleCall()">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="call-icon">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                    </svg>
+                </button>
             </div>
-            <div class="info-card">
-                <h3 class="text-[14px] font-semibold mb-3">Geplante Flows</h3>
-                <div class="space-y-2 text-[13px]">
-                    <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-[#555]"></div><span class="text-[#ccc]">Bestellstatus abfragen</span></div>
-                    <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-[#555]"></div><span class="text-[#ccc]">Retoure einleiten</span></div>
-                    <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-[#555]"></div><span class="text-[#ccc]">Beschwerde aufnehmen</span></div>
-                    <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-[#555]"></div><span class="text-[#ccc]">FAQ beantworten</span></div>
-                    <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-[#555]"></div><span class="text-[#ccc]">Eskalation an Mensch</span></div>
-                </div>
+
+            <!-- ElevenLabs indicator (during call) -->
+            <div id="eleven-badge" class="h-12 px-4 rounded-full bg-[#232323] border border-[#333] flex items-center justify-center gap-2" style="display:none;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                </svg>
+                <span class="text-[11px] text-[#888]">ElevenLabs</span>
             </div>
         </div>
     </div>
 </main>
 
 <script>
+// ============ State ============
+let callActive = false;
+let callStartTime = null;
+let callTimerInterval = null;
+let recognition = null;
+let voiceHistory = [];
+let isProcessing = false;
+let isSpeaking = false;
+let isMuted = false;
+let audioContext = null;
+let analyser = null;
+let micStream = null;
+let animFrame = null;
+let availableVoices = [];
+let audioUnlocked = false;
+let silenceTimer = null;
+let transcriptText = '';
+let interimTranscript = '';
+let currentAudio = null;
+const SILENCE_TIMEOUT = 1500; // 1.5s silence = done speaking
+
+// ============ Sidebar ============
 document.getElementById('sidebar-toggle-btn')?.addEventListener('click', () => {
     document.getElementById('sidebar').classList.toggle('sidebar-collapsed');
 });
+
+// ============ Audio Unlock (browser autoplay policy) ============
+function unlockAudio() {
+    if (audioUnlocked) return;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    ctx.close();
+    audioUnlocked = true;
+}
+
+// ============ Speech Recognition Setup ============
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SpeechRecognition) {
+    document.getElementById('welcome-state').innerHTML = `
+        <div class="w-24 h-24 rounded-full bg-[#171717] border border-[#2a2a2a] flex items-center justify-center mx-auto mb-6">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.12 1.49-.34 2.18"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+        </div>
+        <h2 class="text-xl font-semibold mb-2 text-red-400">Browser nicht unterstützt</h2>
+        <p class="text-[#666] text-[14px]">Bitte Chrome oder Edge verwenden für Speech Recognition.</p>
+    `;
+}
+
+// ============ Call Toggle ============
+function toggleCall() {
+    unlockAudio();
+    if (callActive) endCall();
+    else startCall();
+}
+
+async function startCall() {
+    console.log('[CALL] Starting call...');
+    callActive = true;
+    voiceHistory = [];
+    transcriptText = '';
+    interimTranscript = '';
+    callStartTime = Date.now();
+
+    // Request mic early
+    try {
+        if (!micStream) {
+            console.log('[CALL] Requesting microphone...');
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const track = micStream.getAudioTracks()[0];
+            console.log('[CALL] Microphone granted:', track.label, '| enabled:', track.enabled, '| muted:', track.muted, '| readyState:', track.readyState);
+
+            // Check if audio is actually flowing
+            const testCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const testSource = testCtx.createMediaStreamSource(micStream);
+            const testAnalyser = testCtx.createAnalyser();
+            testAnalyser.fftSize = 256;
+            testSource.connect(testAnalyser);
+            const testData = new Uint8Array(testAnalyser.frequencyBinCount);
+
+            // Wait 500ms then check if we get any audio data
+            await new Promise(r => setTimeout(r, 500));
+            testAnalyser.getByteFrequencyData(testData);
+            const maxLevel = Math.max(...testData);
+            console.log('[CALL] Mic audio level test: max=' + maxLevel + ' (should be > 0 if mic works)');
+            testCtx.close();
+
+            if (maxLevel === 0) {
+                console.warn('[CALL] WARNING: Microphone returns silence! Check Windows Privacy > Microphone settings');
+                addTranscript('system', 'Mikrofon erkannt (' + track.label + ') aber kein Audio-Signal. Prüfe Windows Einstellungen > Datenschutz > Mikrofon');
+            }
+        }
+    } catch (e) {
+        console.error('[CALL] Mic access denied:', e);
+        addTranscript('system', 'Mikrofon-Zugriff verweigert: ' + e.message);
+        callActive = false;
+        return;
+    }
+
+    // UI updates
+    document.getElementById('welcome-state')?.remove();
+    document.getElementById('call-btn').className = 'call-btn call-btn-end';
+    document.getElementById('call-icon').innerHTML = '<line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.87"/><path d="M5 4.87a10.94 10.94 0 0 0 2.28 1.81"/><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.11 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>';
+    document.getElementById('pulse-ring').style.display = 'block';
+    document.getElementById('mute-btn').style.display = 'flex';
+    document.getElementById('eleven-badge').style.display = 'flex';
+    document.getElementById('waveform-container').style.display = 'flex';
+    document.getElementById('live-text-container').style.display = 'flex';
+
+    // Timer
+    callTimerInterval = setInterval(updateTimer, 1000);
+
+    // Agent greeting (non-blocking — always start listening after)
+    setStatus('speaking', 'Agent spricht...');
+    addTranscript('agent', 'Willkommen beim KI Contact Center. Wie kann ich Ihnen helfen?');
+    console.log('[CALL] Playing greeting...');
+    try {
+        await speakTTS('Willkommen beim KI Contact Center. Wie kann ich Ihnen helfen?');
+        console.log('[CALL] Greeting done');
+    } catch (e) {
+        console.log('[CALL] Greeting TTS failed, continuing anyway:', e);
+    }
+    isSpeaking = false;
+
+    // Always start listening, even if greeting failed
+    console.log('[CALL] Starting listening... callActive=' + callActive);
+    if (callActive) startListening();
+}
+
+function endCall() {
+    callActive = false;
+
+    // Stop everything
+    stopSpeaking();
+    stopRecognition();
+    stopWaveform();
+    clearTimeout(silenceTimer);
+
+    if (micStream) {
+        micStream.getTracks().forEach(t => t.stop());
+        micStream = null;
+    }
+
+    clearInterval(callTimerInterval);
+    const duration = document.getElementById('call-timer').textContent;
+
+    // UI reset
+    document.getElementById('call-btn').className = 'call-btn call-btn-start';
+    document.getElementById('call-icon').innerHTML = '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>';
+    document.getElementById('pulse-ring').style.display = 'none';
+    document.getElementById('mute-btn').style.display = 'none';
+    document.getElementById('eleven-badge').style.display = 'none';
+    document.getElementById('waveform-container').style.display = 'none';
+    document.getElementById('live-text-container').style.display = 'none';
+
+    setStatus('idle', 'Bereit');
+    addTranscript('system', `Anruf beendet (${duration})`);
+    document.getElementById('call-timer').textContent = '00:00';
+    isProcessing = false;
+    isSpeaking = false;
+}
+
+// ============ Speech Recognition with Silence Detection ============
+function startListening() {
+    console.log('[LISTEN] startListening called — active:', callActive, 'processing:', isProcessing, 'speaking:', isSpeaking, 'muted:', isMuted);
+    if (!callActive || isProcessing || isSpeaking || isMuted) {
+        console.log('[LISTEN] Aborted — guard condition failed');
+        return;
+    }
+
+    transcriptText = '';
+    interimTranscript = '';
+    document.getElementById('live-text').textContent = '';
+
+    recognition = new SpeechRecognition();
+    recognition.lang = 'de-DE';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    setStatus('listening', 'Hört zu...');
+    startWaveform();
+
+    let hasReceivedSpeech = false;
+
+    recognition.onresult = (event) => {
+        console.log('[STT] Got result, results count:', event.results.length);
+        if (!callActive) return;
+
+        let allFinal = '';
+        let currentInterim = '';
+
+        for (let i = 0; i < event.results.length; i++) {
+            const result = event.results[i];
+            if (result.isFinal) {
+                allFinal += result[0].transcript;
+            } else {
+                currentInterim += result[0].transcript;
+            }
+        }
+
+        transcriptText = allFinal;
+        interimTranscript = currentInterim;
+        hasReceivedSpeech = true;
+
+        // Live display
+        const displayText = (transcriptText + ' ' + interimTranscript).trim();
+        document.getElementById('live-text').textContent = displayText;
+
+        // Reset silence timer on every result
+        clearTimeout(silenceTimer);
+        silenceTimer = setTimeout(() => {
+            // Silence detected — send what we have
+            if (callActive && !isProcessing && !isSpeaking) {
+                const finalText = (transcriptText + ' ' + interimTranscript).trim();
+                if (finalText) {
+                    stopRecognition();
+                    stopWaveform();
+                    processUserInput(finalText);
+                }
+            }
+        }, SILENCE_TIMEOUT);
+    };
+
+    recognition.onerror = (event) => {
+        console.log('[STT] Error:', event.error);
+        if (event.error === 'no-speech') {
+            if (callActive && !isProcessing && !isSpeaking) restartListening();
+        } else if (event.error === 'not-allowed') {
+            console.error('[STT] Microphone permission denied for Speech Recognition');
+            addTranscript('system', 'Spracherkennung blockiert — erlaube Mikrofon-Zugriff');
+        } else if (event.error !== 'aborted') {
+            if (callActive && !isProcessing && !isSpeaking) restartListening();
+        }
+    };
+
+    recognition.onend = () => {
+        console.log('[STT] Recognition ended');
+        // Auto-restart if we're supposed to be listening
+        if (callActive && !isProcessing && !isSpeaking && !isMuted) {
+            // Check if we have pending text that should be sent
+            const pendingText = (transcriptText + ' ' + interimTranscript).trim();
+            if (pendingText && hasReceivedSpeech) {
+                clearTimeout(silenceTimer);
+                stopWaveform();
+                processUserInput(pendingText);
+            } else {
+                restartListening();
+            }
+        }
+    };
+
+    try {
+        recognition.start();
+        console.log('[STT] Recognition started successfully');
+    } catch (e) {
+        console.error('[STT] Failed to start recognition:', e);
+        setTimeout(() => { if (callActive && !isProcessing && !isSpeaking) startListening(); }, 300);
+    }
+}
+
+function stopRecognition() {
+    clearTimeout(silenceTimer);
+    if (recognition) {
+        recognition.onend = null;
+        recognition.onerror = null;
+        try { recognition.abort(); } catch (e) {}
+        recognition = null;
+    }
+}
+
+function restartListening() {
+    stopRecognition();
+    setTimeout(() => {
+        if (callActive && !isProcessing && !isSpeaking && !isMuted) startListening();
+    }, 200);
+}
+
+// ============ Process Input → Streaming Claude → TTS ============
+async function processUserInput(text) {
+    if (isProcessing || !callActive || !text.trim()) return;
+    isProcessing = true;
+
+    document.getElementById('live-text').textContent = '';
+    addTranscript('user', text);
+    setStatus('thinking', 'Denkt nach...');
+
+    voiceHistory.push({ role: 'user', content: text });
+
+    try {
+        // Stream from Claude
+        const res = await fetch('/api/chat/stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: text,
+                history: voiceHistory.slice(-10),
+                channel: 'voice'
+            })
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullResponse = '';
+        let firstSentenceSent = false;
+        let ttsPreloadPromise = null;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                try {
+                    const data = JSON.parse(line.slice(6));
+
+                    if (data.error) {
+                        fullResponse = 'Entschuldigung, ein technischer Fehler ist aufgetreten.';
+                        break;
+                    }
+
+                    if (data.chunk) {
+                        fullResponse = data.full;
+
+                        // TTS Pre-loading: fire TTS for first sentence while Claude keeps streaming
+                        if (!firstSentenceSent && /[.!?]/.test(fullResponse)) {
+                            firstSentenceSent = true;
+                            const firstSentence = fullResponse.match(/^[^.!?]+[.!?]/)?.[0] || fullResponse;
+                            ttsPreloadPromise = preloadTTS(firstSentence);
+                        }
+                    }
+
+                    if (data.done) {
+                        voiceHistory.push({ role: 'assistant', content: fullResponse });
+                    }
+                } catch (e) {}
+            }
+        }
+
+        if (!callActive) { isProcessing = false; return; }
+
+        // Show response in transcript
+        addTranscript('agent', fullResponse);
+        setStatus('speaking', 'Agent spricht...');
+
+        // Speak the full response (preloaded first sentence makes this faster)
+        await speakTTS(fullResponse, ttsPreloadPromise);
+
+    } catch (err) {
+        if (callActive) {
+            addTranscript('agent', 'Verbindungsfehler.');
+            await speakTTS('Entschuldigung, es gab einen Verbindungsfehler.');
+        }
+    }
+
+    isProcessing = false;
+    isSpeaking = false;
+
+    // Auto-loop: go back to listening
+    if (callActive && !isMuted) {
+        startListening();
+    }
+}
+
+// ============ ElevenLabs TTS with Pre-loading ============
+async function preloadTTS(text) {
+    const voiceId = document.getElementById('voice-select').value;
+    try {
+        const res = await fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, voice_id: voiceId })
+        });
+        if (res.ok) return await res.blob();
+    } catch (e) {}
+    return null;
+}
+
+async function speakTTS(text, preloadedBlob) {
+    if (!callActive) return;
+    isSpeaking = true;
+
+    // Wrap in timeout so it NEVER hangs
+    return new Promise(async (resolveOuter) => {
+        const safetyTimeout = setTimeout(() => {
+            console.log('speakTTS safety timeout — forcing resolve');
+            stopSpeaking();
+            isSpeaking = false;
+            resolveOuter();
+        }, 15000);
+
+        function done() {
+            clearTimeout(safetyTimeout);
+            isSpeaking = false;
+            resolveOuter();
+        }
+
+        const voiceId = document.getElementById('voice-select').value;
+
+        // Try preloaded blob first, or fetch new from ElevenLabs
+        let blob = null;
+        try {
+            blob = preloadedBlob instanceof Promise ? await preloadedBlob : preloadedBlob;
+        } catch (e) {}
+
+        if (!blob && voiceId) {
+            try {
+                const res = await fetch('/api/tts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, voice_id: voiceId })
+                });
+                if (res.ok) {
+                    const contentType = res.headers.get('content-type') || '';
+                    if (contentType.includes('audio')) {
+                        blob = await res.blob();
+                    }
+                }
+            } catch (e) {}
+        }
+
+        // Play ElevenLabs audio
+        if (blob && blob.size > 100) {
+            const url = URL.createObjectURL(blob);
+            currentAudio = new Audio(url);
+            currentAudio.onended = () => { URL.revokeObjectURL(url); currentAudio = null; done(); };
+            currentAudio.onerror = () => { URL.revokeObjectURL(url); currentAudio = null; done(); };
+            try {
+                await currentAudio.play();
+                return; // playing — will resolve via onended
+            } catch (e) {
+                URL.revokeObjectURL(url);
+                currentAudio = null;
+                // Fall through to browser TTS
+            }
+        }
+
+        // Fallback: browser SpeechSynthesis with safety timeout
+        try {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'de-DE';
+            utterance.rate = 0.95;
+            utterance.pitch = 0.9;
+
+            let resolved = false;
+            const browserTimeout = setTimeout(() => {
+                if (!resolved) { resolved = true; speechSynthesis.cancel(); done(); }
+            }, 8000);
+
+            utterance.onend = () => { if (!resolved) { resolved = true; clearTimeout(browserTimeout); done(); } };
+            utterance.onerror = () => { if (!resolved) { resolved = true; clearTimeout(browserTimeout); done(); } };
+            speechSynthesis.speak(utterance);
+        } catch (e) {
+            done();
+        }
+    });
+}
+
+function stopSpeaking() {
+    speechSynthesis.cancel();
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.src = '';
+        currentAudio = null;
+    }
+    isSpeaking = false;
+}
+
+// ============ Load ElevenLabs Voices ============
+async function loadVoices() {
+    const select = document.getElementById('voice-select');
+    try {
+        const res = await fetch('/api/voices');
+        if (!res.ok) throw new Error('API error');
+        availableVoices = await res.json();
+        select.innerHTML = '';
+        if (availableVoices.length === 0) {
+            select.innerHTML = '<option value="">Keine Stimmen gefunden</option>';
+            return;
+        }
+        availableVoices.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.id;
+            const label = v.labels?.accent || v.labels?.gender || v.category || '';
+            opt.textContent = v.name + (label ? ` (${label})` : '');
+            select.appendChild(opt);
+        });
+    } catch (e) {
+        select.innerHTML = '<option value="">ElevenLabs nicht verbunden</option>';
+    }
+}
+
+async function previewVoice() {
+    const voiceId = document.getElementById('voice-select').value;
+    if (!voiceId) return;
+    unlockAudio();
+    try {
+        const res = await fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: 'Willkommen beim KI Contact Center. Wie kann ich Ihnen helfen?', voice_id: voiceId })
+        });
+        if (res.ok) {
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            audio.onended = () => URL.revokeObjectURL(url);
+            audio.play();
+        }
+    } catch (e) {}
+}
+
+loadVoices();
+
+// ============ UI Helpers ============
+function setStatus(state, label) {
+    const dot = document.getElementById('status-dot');
+    const lbl = document.getElementById('status-label');
+    dot.className = 'status-dot status-' + state;
+    lbl.textContent = label;
+
+    const ring = document.getElementById('pulse-ring');
+    if (state === 'listening') ring.style.background = 'rgba(34,197,94,0.3)';
+    else if (state === 'thinking') ring.style.background = 'rgba(234,179,8,0.3)';
+    else if (state === 'speaking') ring.style.background = 'rgba(59,130,246,0.3)';
+}
+
+function addTranscript(role, text) {
+    const container = document.getElementById('transcript-messages');
+    const div = document.createElement('div');
+
+    if (role === 'system') {
+        div.className = 'text-center py-2';
+        div.innerHTML = `<span class="text-[11px] text-[#555] px-3 py-1 rounded-full bg-[#111] border border-[#222]">${text}</span>`;
+    } else {
+        div.className = 'flex ' + (role === 'user' ? 'justify-end' : 'justify-start');
+        div.innerHTML = `
+            <div class="transcript-bubble transcript-${role === 'user' ? 'user' : 'agent'}">
+                ${role === 'agent' ? '<p class="text-[10px] text-[#666] mb-0.5">KI-Agent</p>' : '<p class="text-[10px] text-[#666] mb-0.5 text-right">Du</p>'}
+                <p class="text-[14px] text-[#ddd] leading-relaxed">${text}</p>
+            </div>
+        `;
+    }
+
+    container.appendChild(div);
+    document.getElementById('transcript-panel').scrollTop = document.getElementById('transcript-panel').scrollHeight;
+}
+
+function updateTimer() {
+    if (!callStartTime) return;
+    const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+    const min = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const sec = String(elapsed % 60).padStart(2, '0');
+    document.getElementById('call-timer').textContent = `${min}:${sec}`;
+}
+
+function toggleMute() {
+    isMuted = !isMuted;
+    const btn = document.getElementById('mute-btn');
+    if (isMuted) {
+        btn.classList.add('bg-red-500/20', 'border-red-500/50');
+        document.getElementById('mute-icon').innerHTML = '<line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.12 1.49-.34 2.18"/><line x1="12" y1="19" x2="12" y2="22"/>';
+        stopRecognition();
+        stopWaveform();
+        setStatus('idle', 'Stummgeschaltet');
+    } else {
+        btn.classList.remove('bg-red-500/20', 'border-red-500/50');
+        document.getElementById('mute-icon').innerHTML = '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line>';
+        if (!isProcessing && !isSpeaking) startListening();
+    }
+}
+
+// ============ Waveform Visualizer ============
+async function startWaveform() {
+    console.log('[WAVE] Starting waveform, micStream exists:', !!micStream);
+    try {
+        if (!micStream) {
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+        if (audioContext) { try { audioContext.close(); } catch(e) {} }
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(micStream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 64;
+        source.connect(analyser);
+
+        const bars = document.querySelectorAll('.wave-bar');
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        function draw() {
+            animFrame = requestAnimationFrame(draw);
+            analyser.getByteFrequencyData(dataArray);
+            bars.forEach((bar, i) => {
+                const val = dataArray[i] || 0;
+                bar.style.height = Math.max(4, (val / 255) * 48) + 'px';
+                bar.style.opacity = Math.max(0.3, val / 255);
+            });
+        }
+        draw();
+        console.log('[WAVE] Waveform running');
+    } catch (e) {
+        console.error('[WAVE] Waveform init failed:', e);
+    }
+}
+
+function stopWaveform() {
+    if (animFrame) cancelAnimationFrame(animFrame);
+    animFrame = null;
+    if (audioContext) { try { audioContext.close(); } catch(e) {} audioContext = null; }
+    document.querySelectorAll('.wave-bar').forEach(b => { b.style.height = '4px'; b.style.opacity = '1'; });
+}
 </script>
 </body>
 </html>

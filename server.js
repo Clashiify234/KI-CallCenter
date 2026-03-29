@@ -8,7 +8,8 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 const API_KEYS = {
-    anthropic: process.env.ANTHROPIC_API_KEY || ''
+    anthropic: process.env.ANTHROPIC_API_KEY || '',
+    elevenlabs: process.env.ELEVENLABS_API_KEY || ''
 };
 
 app.use(cors());
@@ -181,6 +182,202 @@ app.get('/api/stats', (req, res) => {
             email: tickets.filter(t => t.channel === 'email').length
         }
     });
+});
+
+// ============ Streaming Chat with Claude ============
+app.post('/api/chat/stream', async (req, res) => {
+    const { message, history = [], channel = 'voice' } = req.body;
+
+    if (!API_KEYS.anthropic) {
+        return res.status(500).json({ error: 'Anthropic API key not configured' });
+    }
+
+    const kbContext = knowledgeBase.length > 0
+        ? '\n\nKnowledge Base:\n' + knowledgeBase.map(k => `- ${k.question}: ${k.answer}`).join('\n')
+        : '';
+
+    const systemPrompt = `Du bist ein freundlicher und kompetenter KI-Service-Agent eines Contact Centers am Telefon. Du sprichst Deutsch, bist lösungsorientiert und fasst dich kurz (2-3 Sätze pro Antwort).
+
+Regeln:
+- Nutze die Knowledge Base, um Fragen zu beantworten
+- Wenn du die Antwort nicht sicher weißt, sag das ehrlich und biete Eskalation an einen menschlichen Kollegen an
+- Erfinde niemals Informationen
+- Sei empathisch bei Beschwerden
+- Antworte natürlich und gesprächig, wie am Telefon — keine Markdown-Formatierung, keine Aufzählungen
+- Erfasse immer den Kontaktgrund${kbContext}`;
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    try {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': API_KEYS.anthropic,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 512,
+                stream: true,
+                system: systemPrompt,
+                messages: [
+                    ...history.map(h => ({ role: h.role, content: h.content })),
+                    { role: 'user', content: message }
+                ]
+            })
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            res.write(`data: ${JSON.stringify({ error: err.error?.message || 'Claude error' })}\n\n`);
+            res.end();
+            return;
+        }
+
+        let fullReply = '';
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const data = line.slice(6);
+                if (data === '[DONE]') continue;
+
+                try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                        const chunk = parsed.delta.text;
+                        fullReply += chunk;
+                        res.write(`data: ${JSON.stringify({ chunk, full: fullReply })}\n\n`);
+                    }
+                } catch (e) {}
+            }
+        }
+
+        // Create ticket
+        const ticketId = `T-${String(tickets.length + 1).padStart(4, '0')}`;
+        tickets.push({
+            id: ticketId, channel, date: new Date().toISOString(),
+            message, reply: fullReply, status: 'resolved', intent: 'auto-detected'
+        });
+        saveTickets();
+
+        res.write(`data: ${JSON.stringify({ done: true, ticketId, full: fullReply })}\n\n`);
+        res.end();
+    } catch (err) {
+        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+        res.end();
+    }
+});
+
+// ============ ElevenLabs TTS ============
+
+// TTS Cache (LRU, max 50)
+const ttsCache = new Map();
+const TTS_CACHE_MAX = 50;
+
+function getTTSCacheKey(text, voiceId) {
+    return (voiceId || 'default') + ':' + text.substring(0, 200);
+}
+
+// Get available voices from ElevenLabs
+app.get('/api/voices', async (req, res) => {
+    if (!API_KEYS.elevenlabs) {
+        return res.status(500).json({ error: 'ElevenLabs API key not configured' });
+    }
+    try {
+        const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+            headers: { 'xi-api-key': API_KEYS.elevenlabs }
+        });
+        const data = await response.json();
+        const voices = (data.voices || []).map(v => ({
+            id: v.voice_id,
+            name: v.name,
+            category: v.category || 'custom',
+            labels: v.labels || {},
+            preview: v.preview_url || null
+        }));
+        res.json(voices);
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch voices: ' + err.message });
+    }
+});
+
+// Text to Speech via ElevenLabs
+app.post('/api/tts', async (req, res) => {
+    const { text, voice_id = null, model = 'eleven_multilingual_v2' } = req.body;
+    if (!text) return res.status(400).json({ error: 'No text provided' });
+    if (!API_KEYS.elevenlabs) {
+        return res.status(500).json({ error: 'ElevenLabs API key not configured' });
+    }
+
+    const vid = voice_id || 'EXAVITQu4vr4xnSDxMaL';
+
+    // Check cache
+    const cacheKey = getTTSCacheKey(text, vid);
+    if (ttsCache.has(cacheKey)) {
+        const cached = ttsCache.get(cacheKey);
+        res.set({ 'Content-Type': 'audio/mpeg', 'Content-Length': cached.length });
+        return res.send(cached);
+    }
+
+    try {
+        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${vid}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'xi-api-key': API_KEYS.elevenlabs
+            },
+            body: JSON.stringify({
+                text,
+                model_id: model,
+                voice_settings: {
+                    stability: 0.5,
+                    similarity_boost: 0.75,
+                    style: 0.3,
+                    use_speaker_boost: true
+                }
+            })
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            return res.status(response.status).json({
+                error: err.detail?.message || `ElevenLabs error ${response.status}`
+            });
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = Buffer.from(arrayBuffer);
+
+        // Store in cache
+        ttsCache.set(cacheKey, audioBuffer);
+        if (ttsCache.size > TTS_CACHE_MAX) {
+            const oldest = ttsCache.keys().next().value;
+            ttsCache.delete(oldest);
+        }
+
+        res.set({
+            'Content-Type': 'audio/mpeg',
+            'Content-Length': audioBuffer.length
+        });
+        res.send(audioBuffer);
+    } catch (err) {
+        console.error('ElevenLabs TTS error:', err.message);
+        res.status(500).json({ error: 'TTS failed: ' + err.message });
+    }
 });
 
 // Serve pages

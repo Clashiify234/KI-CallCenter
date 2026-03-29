@@ -124,12 +124,12 @@
                 <div class="border-t border-[#2a2a2a]"></div>
                 <div class="flex items-center justify-between py-2">
                     <div>
-                        <p class="text-[14px] text-[#ccc]">Synthflow</p>
-                        <p class="text-[12px] text-[#666]">Voice Agent Platform</p>
+                        <p class="text-[14px] text-[#ccc]">ElevenLabs</p>
+                        <p class="text-[12px] text-[#666]">Text-to-Speech (Voice Agent)</p>
                     </div>
                     <div class="flex items-center gap-2">
-                        <div class="w-2 h-2 rounded-full bg-[#555]"></div>
-                        <span class="text-[12px] text-[#888]">Phase 2</span>
+                        <div class="w-2 h-2 rounded-full" id="status-eleven"></div>
+                        <span class="text-[12px] text-[#888]" id="label-eleven">Prüfe...</span>
                     </div>
                 </div>
                 <div class="border-t border-[#2a2a2a]"></div>
@@ -195,7 +195,28 @@ async function loadCounts() {
         document.getElementById('count-tickets').textContent = tickets.length + ' Tickets';
     } catch (e) {}
 }
+
+async function checkElevenLabs() {
+    const dot = document.getElementById('status-eleven');
+    const label = document.getElementById('label-eleven');
+    try {
+        const res = await fetch('/api/voices');
+        if (res.ok) {
+            const voices = await res.json();
+            dot.classList.add('bg-green-500');
+            label.textContent = voices.length + ' Stimmen verfügbar';
+        } else {
+            dot.classList.add('bg-[#555]');
+            label.textContent = 'API Key fehlt';
+        }
+    } catch (e) {
+        dot.classList.add('bg-[#555]');
+        label.textContent = 'Nicht erreichbar';
+    }
+}
+
 loadCounts();
+checkElevenLabs();
 </script>
 </body>
 </html>

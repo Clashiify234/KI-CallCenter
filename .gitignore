@@ -1,3 +1,7 @@
 node_modules/
 uploads/
 .env
+*.json
+!package.json
+!package-lock.json
+!.env.example
