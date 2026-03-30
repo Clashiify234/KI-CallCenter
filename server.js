@@ -3,6 +3,9 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const nodemailer = require('nodemailer');
+const Imap = require('imap');
+const { simpleParser } = require('mailparser');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -10,6 +13,13 @@ const PORT = process.env.PORT || 3001;
 const API_KEYS = {
     anthropic: process.env.ANTHROPIC_API_KEY || '',
     elevenlabs: process.env.ELEVENLABS_API_KEY || ''
+};
+
+const EMAIL_CONFIG = {
+    user: process.env.GMAIL_USER || '',
+    pass: process.env.GMAIL_APP_PASSWORD || '',
+    imapHost: 'imap.gmail.com',
+    smtpHost: 'smtp.gmail.com'
 };
 
 app.use(cors());
@@ -356,6 +366,296 @@ app.post('/api/tts-elevenlabs', async (req, res) => {
 });
 
 console.log('  ElevenLabs TTS loaded ✓');
+
+// ============ Email System ============
+let emails = [];
+const EMAILS_FILE = path.join(__dirname, 'emails.json');
+
+function loadEmails() {
+    try {
+        if (fs.existsSync(EMAILS_FILE)) {
+            emails = JSON.parse(fs.readFileSync(EMAILS_FILE, 'utf8'));
+        }
+    } catch (e) { emails = []; }
+}
+function saveEmails() {
+    fs.writeFileSync(EMAILS_FILE, JSON.stringify(emails, null, 2));
+}
+loadEmails();
+
+// SMTP Transporter
+function createTransporter() {
+    return nodemailer.createTransport({
+        host: EMAIL_CONFIG.smtpHost,
+        port: 587,
+        secure: false,
+        auth: { user: EMAIL_CONFIG.user, pass: EMAIL_CONFIG.pass }
+    });
+}
+
+// Fetch emails via IMAP
+function fetchNewEmails() {
+    return new Promise((resolve, reject) => {
+        if (!EMAIL_CONFIG.user || !EMAIL_CONFIG.pass) {
+            return reject(new Error('Gmail credentials not configured'));
+        }
+
+        const imap = new Imap({
+            user: EMAIL_CONFIG.user,
+            password: EMAIL_CONFIG.pass,
+            host: EMAIL_CONFIG.imapHost,
+            port: 993,
+            tls: true,
+            tlsOptions: { rejectUnauthorized: false }
+        });
+
+        const results = [];
+
+        imap.once('ready', () => {
+            imap.openBox('INBOX', false, (err, box) => {
+                if (err) { imap.end(); return reject(err); }
+
+                // Fetch unseen emails from today only
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                imap.search(['UNSEEN', ['SINCE', today]], (err, uids) => {
+                    if (err) { imap.end(); return reject(err); }
+                    if (!uids || uids.length === 0) { imap.end(); return resolve([]); }
+
+                    const f = imap.fetch(uids, { bodies: '', markSeen: true });
+
+                    f.on('message', (msg) => {
+                        msg.on('body', (stream) => {
+                            simpleParser(stream, (err, parsed) => {
+                                if (err) return;
+                                results.push({
+                                    id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                                    from: parsed.from?.text || 'Unbekannt',
+                                    fromAddress: parsed.from?.value?.[0]?.address || '',
+                                    subject: parsed.subject || '(Kein Betreff)',
+                                    body: parsed.text || parsed.html?.replace(/<[^>]*>/g, '') || '',
+                                    date: parsed.date?.toISOString() || new Date().toISOString(),
+                                    status: 'new',
+                                    reply: null,
+                                    repliedAt: null
+                                });
+                            });
+                        });
+                    });
+
+                    f.once('end', () => {
+                        // Wait a bit for all parsers to finish
+                        setTimeout(() => {
+                            imap.end();
+                            resolve(results);
+                        }, 1000);
+                    });
+
+                    f.once('error', (err) => {
+                        imap.end();
+                        reject(err);
+                    });
+                });
+            });
+        });
+
+        imap.once('error', (err) => reject(err));
+        imap.connect();
+    });
+}
+
+// GET /api/emails — list all emails
+app.get('/api/emails', (req, res) => {
+    res.json(emails);
+});
+
+// Classify if an email is a real customer inquiry
+async function isCustomerInquiry(email) {
+    try {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': API_KEYS.anthropic,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 10,
+                messages: [{
+                    role: 'user',
+                    content: `Ist diese Email eine echte Kundenanfrage an ein Unternehmen (z.B. Bestellung, Beschwerde, Retoure, Support-Anfrage, Frage zu Produkten/Dienstleistungen)? Antworte NUR mit JA oder NEIN.
+
+Von: ${email.from}
+Betreff: ${email.subject}
+${email.body.substring(0, 500)}`
+                }]
+            })
+        });
+        const data = await response.json();
+        const answer = data.content?.[0]?.text?.trim().toUpperCase() || '';
+        console.log(`[EMAIL] Filter "${email.subject}": ${answer}`);
+        return answer.startsWith('JA');
+    } catch (e) {
+        console.error('[EMAIL] Filter error:', e.message);
+        return false;
+    }
+}
+
+// POST /api/emails/fetch — fetch new emails from IMAP, filter with Claude
+app.post('/api/emails/fetch', async (req, res) => {
+    try {
+        const newEmails = await fetchNewEmails();
+        if (newEmails.length === 0) {
+            return res.json({ fetched: 0, filtered: 0, total: emails.length });
+        }
+
+        // Filter: only keep real customer inquiries
+        const filtered = [];
+        for (const email of newEmails) {
+            if (await isCustomerInquiry(email)) {
+                filtered.push(email);
+            }
+        }
+
+        console.log(`[EMAIL] ${newEmails.length} fetched, ${filtered.length} are customer inquiries`);
+
+        if (filtered.length > 0) {
+            emails.push(...filtered);
+            saveEmails();
+        }
+        res.json({ fetched: newEmails.length, filtered: filtered.length, total: emails.length });
+    } catch (err) {
+        console.error('[EMAIL] Fetch error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/emails/analyze — Claude analyzes an email and drafts a reply
+app.post('/api/emails/analyze', async (req, res) => {
+    const { emailId } = req.body;
+    const email = emails.find(e => e.id === emailId);
+    if (!email) return res.status(404).json({ error: 'Email not found' });
+
+    const kbContext = knowledgeBase.length > 0
+        ? '\n\nKnowledge Base:\n' + knowledgeBase.map(k => `- ${k.question}: ${k.answer}`).join('\n')
+        : '';
+
+    const systemPrompt = `Du bist ein professioneller KI-Kundenservice-Agent eines Contact Centers. Du analysierst eingehende Kunden-Emails und verfasst passende, freundliche Antworten auf Deutsch.
+
+Regeln:
+- Analysiere die Email: Erkenne den Kontaktgrund (Beschwerde, Frage, Bestellung, Retoure, etc.)
+- Extrahiere wichtige Daten (Bestellnummer, Kundennummer, Produktname, etc.)
+- Verfasse eine professionelle, empathische Antwort-Email
+- Nutze die Knowledge Base falls relevant
+- Sei lösungsorientiert
+- Erfinde KEINE Informationen — wenn du etwas nicht weißt, sag das ehrlich
+- Format: Schreibe NUR die Antwort-Email (mit Anrede und Grußformel), keine Meta-Kommentare${kbContext}`;
+
+    try {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': API_KEYS.anthropic,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 1024,
+                system: systemPrompt,
+                messages: [{
+                    role: 'user',
+                    content: `Eingehende Email:\nVon: ${email.from}\nBetreff: ${email.subject}\n\n${email.body}`
+                }]
+            })
+        });
+
+        const data = await response.json();
+        if (data.error) return res.status(500).json({ error: data.error.message });
+
+        const draft = data.content[0].text;
+
+        // Detect intent
+        const intentResponse = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': API_KEYS.anthropic,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 100,
+                messages: [{
+                    role: 'user',
+                    content: `Klassifiziere diese Kunden-Email in EINEM Wort (z.B. Beschwerde, Frage, Bestellung, Retoure, Stornierung, Lob, Sonstiges):\n\nBetreff: ${email.subject}\n${email.body}`
+                }]
+            })
+        });
+        const intentData = await intentResponse.json();
+        const intent = intentData.content?.[0]?.text?.trim() || 'Sonstiges';
+
+        email.status = 'analyzed';
+        email.draft = draft;
+        email.intent = intent;
+        saveEmails();
+
+        res.json({ draft, intent, email });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/emails/reply — send the reply via SMTP
+app.post('/api/emails/reply', async (req, res) => {
+    const { emailId, replyText } = req.body;
+    const email = emails.find(e => e.id === emailId);
+    if (!email) return res.status(404).json({ error: 'Email not found' });
+
+    if (!EMAIL_CONFIG.user || !EMAIL_CONFIG.pass) {
+        return res.status(500).json({ error: 'Gmail credentials not configured' });
+    }
+
+    try {
+        const transporter = createTransporter();
+        await transporter.sendMail({
+            from: `"KI Contact Center" <${EMAIL_CONFIG.user}>`,
+            to: email.fromAddress,
+            subject: `Re: ${email.subject}`,
+            text: replyText
+        });
+
+        email.status = 'replied';
+        email.reply = replyText;
+        email.repliedAt = new Date().toISOString();
+        saveEmails();
+
+        // Create ticket
+        const ticketId = `T-${String(tickets.length + 1).padStart(4, '0')}`;
+        tickets.push({
+            id: ticketId, channel: 'email', date: new Date().toISOString(),
+            message: `[${email.subject}] ${email.body.substring(0, 200)}`,
+            reply: replyText.substring(0, 200),
+            status: 'resolved', intent: email.intent || 'email'
+        });
+        saveTickets();
+
+        res.json({ success: true, ticketId });
+    } catch (err) {
+        console.error('[EMAIL] Send error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE /api/emails/:id
+app.delete('/api/emails/:id', (req, res) => {
+    emails = emails.filter(e => e.id !== req.params.id);
+    saveEmails();
+    res.json({ success: true });
+});
+
+console.log('  Email System loaded ✓');
 
 // Serve pages
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
