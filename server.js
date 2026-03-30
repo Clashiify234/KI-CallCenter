@@ -1,4 +1,6 @@
 require('dotenv').config();
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -386,10 +388,14 @@ loadEmails();
 // SMTP Transporter
 function createTransporter() {
     return nodemailer.createTransport({
-        host: EMAIL_CONFIG.smtpHost,
-        port: 587,
-        secure: false,
-        auth: { user: EMAIL_CONFIG.user, pass: EMAIL_CONFIG.pass }
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
+        auth: { user: EMAIL_CONFIG.user, pass: EMAIL_CONFIG.pass },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
+        tls: { rejectUnauthorized: false }
     });
 }
 
