@@ -385,23 +385,20 @@ function saveEmails() {
 }
 loadEmails();
 
-// SMTP Transporter (force IPv4 for Render compatibility)
-function createTransporter() {
+// SMTP Transporter (resolve IPv4 manually for Render compatibility)
+async function createTransporter() {
+    const addresses = await dns.promises.resolve4('smtp.gmail.com');
+    const ip = addresses[0];
+    console.log('[SMTP] Resolved smtp.gmail.com to IPv4:', ip);
     return nodemailer.createTransport({
-        host: 'smtp.gmail.com',
+        host: ip,
         port: 465,
         secure: true,
         auth: { user: EMAIL_CONFIG.user, pass: EMAIL_CONFIG.pass },
         connectionTimeout: 10000,
         greetingTimeout: 10000,
         socketTimeout: 15000,
-        tls: { rejectUnauthorized: false },
-        dnsLookup: (hostname, options, callback) => {
-            dns.resolve4(hostname, (err, addresses) => {
-                if (err) return callback(err);
-                callback(null, addresses[0], 4);
-            });
-        }
+        tls: { rejectUnauthorized: false, servername: 'smtp.gmail.com' }
     });
 }
 
@@ -587,7 +584,7 @@ app.post('/api/emails/reply', async (req, res) => {
     }
 
     try {
-        const transporter = createTransporter();
+        const transporter = await createTransporter();
         await transporter.sendMail({
             from: `"KI Contact Center" <${EMAIL_CONFIG.user}>`,
             to: email.fromAddress,
