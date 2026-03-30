@@ -292,7 +292,7 @@ app.post('/api/tts-elevenlabs', async (req, res) => {
         if (!text || text.trim() === '') return res.status(400).json({ error: 'No text' });
 
         const apiKey = API_KEYS.elevenlabs;
-        const voiceId = 'ztZBipzb4WQJRDayep3G';
+        const voiceId = '6CS8keYmkwxkspesdyA7';
         console.log('[ElevenLabs] API key present:', !!apiKey, '| Voice ID:', voiceId);
         if (!apiKey) {
             console.error('[ElevenLabs] No API key configured!');
