@@ -343,11 +343,9 @@ async function fetchEmails() {
 
         if (data.error) {
             showToast('Fehler: ' + data.error, 'error');
-        } else if (data.filtered > 0) {
-            showToast(`${data.filtered} Kundenanfrage(n) von ${data.fetched} Emails erkannt`);
-            await loadEmails();
         } else if (data.fetched > 0) {
-            showToast(`${data.fetched} Email(s) geprueft — keine Kundenanfragen`);
+            showToast(`${data.fetched} neue Email(s) abgerufen`);
+            await loadEmails();
         } else {
             showToast('Keine neuen Emails');
         }

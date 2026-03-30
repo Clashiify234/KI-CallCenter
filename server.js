@@ -475,62 +475,15 @@ app.get('/api/emails', (req, res) => {
     res.json(emails);
 });
 
-// Classify if an email is a real customer inquiry
-async function isCustomerInquiry(email) {
-    try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': API_KEYS.anthropic,
-                'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-                model: 'claude-sonnet-4-20250514',
-                max_tokens: 10,
-                messages: [{
-                    role: 'user',
-                    content: `Ist diese Email eine echte Kundenanfrage an ein Unternehmen (z.B. Bestellung, Beschwerde, Retoure, Support-Anfrage, Frage zu Produkten/Dienstleistungen)? Antworte NUR mit JA oder NEIN.
-
-Von: ${email.from}
-Betreff: ${email.subject}
-${email.body.substring(0, 500)}`
-                }]
-            })
-        });
-        const data = await response.json();
-        const answer = data.content?.[0]?.text?.trim().toUpperCase() || '';
-        console.log(`[EMAIL] Filter "${email.subject}": ${answer}`);
-        return answer.startsWith('JA');
-    } catch (e) {
-        console.error('[EMAIL] Filter error:', e.message);
-        return false;
-    }
-}
-
-// POST /api/emails/fetch — fetch new emails from IMAP, filter with Claude
+// POST /api/emails/fetch — fetch new emails from IMAP
 app.post('/api/emails/fetch', async (req, res) => {
     try {
         const newEmails = await fetchNewEmails();
-        if (newEmails.length === 0) {
-            return res.json({ fetched: 0, filtered: 0, total: emails.length });
-        }
-
-        // Filter: only keep real customer inquiries
-        const filtered = [];
-        for (const email of newEmails) {
-            if (await isCustomerInquiry(email)) {
-                filtered.push(email);
-            }
-        }
-
-        console.log(`[EMAIL] ${newEmails.length} fetched, ${filtered.length} are customer inquiries`);
-
-        if (filtered.length > 0) {
-            emails.push(...filtered);
+        if (newEmails.length > 0) {
+            emails.push(...newEmails);
             saveEmails();
         }
-        res.json({ fetched: newEmails.length, filtered: filtered.length, total: emails.length });
+        res.json({ fetched: newEmails.length, total: emails.length });
     } catch (err) {
         console.error('[EMAIL] Fetch error:', err.message);
         res.status(500).json({ error: err.message });
