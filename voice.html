@@ -235,6 +235,7 @@ let silenceTimer = null;
 let transcriptText = '';
 let interimTranscript = '';
 let currentAudio = null;
+let typingInterval = null;
 const SILENCE_TIMEOUT = 1500; // 1.5s silence = done speaking
 
 // ============ Sidebar ============
@@ -485,6 +486,109 @@ function stopRecognition() {
     }
 }
 
+// ============ Typing Sound (Web Audio API) ============
+function playKeystroke() {
+    if (!audioContext || audioContext.state === 'closed') return;
+    const now = audioContext.currentTime;
+
+    // Random variation for realism
+    const freq = 800 + Math.random() * 1800;
+    const duration = 0.025 + Math.random() * 0.035;
+    const volume = 0.03 + Math.random() * 0.04;
+
+    // Key click — short noise burst with bandpass filter
+    const bufferSize = Math.ceil(audioContext.sampleRate * duration);
+    const noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        // Shaped noise with sharp attack, quick decay
+        const env = Math.exp(-i / (bufferSize * 0.15));
+        data[i] = (Math.random() * 2 - 1) * env;
+    }
+
+    const source = audioContext.createBufferSource();
+    source.buffer = noiseBuffer;
+
+    const bandpass = audioContext.createBiquadFilter();
+    bandpass.type = 'bandpass';
+    bandpass.frequency.value = freq;
+    bandpass.Q.value = 1.5 + Math.random() * 2;
+
+    const gain = audioContext.createGain();
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    source.connect(bandpass);
+    bandpass.connect(gain);
+    gain.connect(audioContext.destination);
+    source.start(now);
+    source.stop(now + duration + 0.01);
+
+    // Occasional heavier "spacebar" or "enter" thud
+    if (Math.random() < 0.12) {
+        const thudDuration = 0.05;
+        const thudSize = Math.ceil(audioContext.sampleRate * thudDuration);
+        const thudBuffer = audioContext.createBuffer(1, thudSize, audioContext.sampleRate);
+        const thudData = thudBuffer.getChannelData(0);
+        for (let i = 0; i < thudSize; i++) {
+            const env = Math.exp(-i / (thudSize * 0.1));
+            thudData[i] = (Math.random() * 2 - 1) * env;
+        }
+        const thudSource = audioContext.createBufferSource();
+        thudSource.buffer = thudBuffer;
+        const lowpass = audioContext.createBiquadFilter();
+        lowpass.type = 'lowpass';
+        lowpass.frequency.value = 400 + Math.random() * 200;
+        const thudGain = audioContext.createGain();
+        thudGain.gain.setValueAtTime(volume * 1.5, now);
+        thudGain.gain.exponentialRampToValueAtTime(0.001, now + thudDuration);
+        thudSource.connect(lowpass);
+        lowpass.connect(thudGain);
+        thudGain.connect(audioContext.destination);
+        thudSource.start(now + 0.01);
+        thudSource.stop(now + thudDuration + 0.02);
+    }
+}
+
+function startTypingSound() {
+    stopTypingSound();
+    if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioContext.state === 'suspended') audioContext.resume();
+
+    // Irregular typing rhythm: burst of keystrokes with natural pauses
+    let burstCount = 0;
+    let burstLength = 3 + Math.floor(Math.random() * 8);
+
+    function scheduleNext() {
+        if (!typingInterval) return;
+        playKeystroke();
+        burstCount++;
+
+        let delay;
+        if (burstCount >= burstLength) {
+            // Pause between word bursts (150-400ms)
+            delay = 150 + Math.random() * 250;
+            burstCount = 0;
+            burstLength = 2 + Math.floor(Math.random() * 10);
+        } else {
+            // Between keystrokes in a burst (40-110ms like real typing)
+            delay = 40 + Math.random() * 70;
+        }
+        typingInterval = setTimeout(scheduleNext, delay);
+    }
+
+    typingInterval = setTimeout(scheduleNext, 100);
+    console.log('[TYPING] Started');
+}
+
+function stopTypingSound() {
+    if (typingInterval) {
+        clearTimeout(typingInterval);
+        typingInterval = null;
+        console.log('[TYPING] Stopped');
+    }
+}
+
 // ============ Process Input → Streaming Claude → TTS ============
 async function processUserInput(text) {
     if (isProcessing || !callActive || !text.trim()) return;
@@ -493,6 +597,7 @@ async function processUserInput(text) {
     document.getElementById('live-text').textContent = '';
     addTranscript('user', text);
     setStatus('thinking', 'Denkt nach...');
+    startTypingSound();
 
     voiceHistory.push({ role: 'user', content: text });
 
@@ -554,6 +659,7 @@ async function processUserInput(text) {
         if (!callActive) { isProcessing = false; return; }
 
         // Show response in transcript
+        stopTypingSound();
         addTranscript('agent', fullResponse);
         setStatus('speaking', 'Agent spricht...');
 
@@ -561,6 +667,7 @@ async function processUserInput(text) {
         await speakTTS(fullResponse, ttsPreloadPromise);
 
     } catch (err) {
+        stopTypingSound();
         if (callActive) {
             addTranscript('agent', 'Verbindungsfehler.');
             await speakTTS('Entschuldigung, es gab einen Verbindungsfehler.');
