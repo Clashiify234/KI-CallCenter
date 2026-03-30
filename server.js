@@ -385,7 +385,7 @@ function saveEmails() {
 }
 loadEmails();
 
-// SMTP Transporter
+// SMTP Transporter (force IPv4 for Render compatibility)
 function createTransporter() {
     return nodemailer.createTransport({
         host: 'smtp.gmail.com',
@@ -395,7 +395,13 @@ function createTransporter() {
         connectionTimeout: 10000,
         greetingTimeout: 10000,
         socketTimeout: 15000,
-        tls: { rejectUnauthorized: false }
+        tls: { rejectUnauthorized: false },
+        dnsLookup: (hostname, options, callback) => {
+            dns.resolve4(hostname, (err, addresses) => {
+                if (err) return callback(err);
+                callback(null, addresses[0], 4);
+            });
+        }
     });
 }
 
@@ -406,13 +412,17 @@ function fetchNewEmails() {
             return reject(new Error('Gmail credentials not configured'));
         }
 
+        // Resolve IMAP host to IPv4 first
+        const net = require('net');
         const imap = new Imap({
             user: EMAIL_CONFIG.user,
             password: EMAIL_CONFIG.pass,
             host: EMAIL_CONFIG.imapHost,
             port: 993,
             tls: true,
-            tlsOptions: { rejectUnauthorized: false }
+            tlsOptions: { rejectUnauthorized: false, family: 4 },
+            socketTimeout: 15000,
+            connTimeout: 10000
         });
 
         const results = [];
