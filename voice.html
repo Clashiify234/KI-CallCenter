@@ -577,17 +577,32 @@ async function processUserInput(text) {
     }
 }
 
-// ============ ElevenLabs TTS with Pre-loading ============
+// ============ ElevenLabs TTS ============
 async function preloadTTS(text) {
-    const voiceId = document.getElementById('voice-select').value;
     try {
-        const res = await fetch('/api/tts', {
+        console.log('[TTS] Preloading:', text.substring(0, 60));
+        const res = await fetch('/api/tts-elevenlabs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, voice_id: voiceId })
+            body: JSON.stringify({ text })
         });
         if (res.ok) return await res.blob();
-    } catch (e) {}
+        console.warn('[TTS] Preload failed:', res.status);
+    } catch (e) { console.warn('[TTS] Preload error:', e.message); }
+    return null;
+}
+
+async function fetchTTSBlob(text) {
+    try {
+        console.log('[TTS] Fetching:', text.substring(0, 60));
+        const res = await fetch('/api/tts-elevenlabs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+        });
+        console.log('[TTS] ElevenLabs response:', res.status);
+        if (res.ok) return await res.blob();
+    } catch (e) { console.warn('[TTS] ElevenLabs fetch error:', e.message); }
     return null;
 }
 
@@ -595,78 +610,90 @@ async function speakTTS(text, preloadedBlob) {
     if (!callActive) return;
     isSpeaking = true;
 
-    // Wrap in timeout so it NEVER hangs
-    return new Promise(async (resolveOuter) => {
-        const safetyTimeout = setTimeout(() => {
-            console.log('speakTTS safety timeout — forcing resolve');
-            stopSpeaking();
-            isSpeaking = false;
-            resolveOuter();
+    // Split text into sentences for sequential playback
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+    console.log('[TTS] Speaking', sentences.length, 'sentence(s)');
+
+    // Resolve preloaded blob (first sentence)
+    let firstBlob = null;
+    try {
+        firstBlob = preloadedBlob instanceof Promise ? await preloadedBlob : preloadedBlob;
+    } catch (e) {}
+
+    // Prefetch all sentences in parallel immediately
+    const blobPromises = sentences.map((s, i) => {
+        if (i === 0 && firstBlob) return Promise.resolve(firstBlob);
+        return fetchTTSBlob(s.trim());
+    });
+
+    for (let i = 0; i < sentences.length; i++) {
+        if (!callActive) break;
+        const sentence = sentences[i].trim();
+        if (!sentence) continue;
+
+        // Await the already-started fetch for this sentence
+        const blob = await blobPromises[i];
+
+        // Play audio for this sentence
+        if (blob && blob.size > 100) {
+            await playAudioBlob(blob);
+        } else {
+            await speakBrowserTTS(sentence);
+        }
+    }
+
+    isSpeaking = false;
+}
+
+function playAudioBlob(blob) {
+    return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+            console.log('[TTS] Sentence timeout — skipping');
+            if (currentAudio) { currentAudio.pause(); currentAudio.src = ''; currentAudio = null; }
+            resolve();
         }, 15000);
 
+        const url = URL.createObjectURL(blob);
+        currentAudio = new Audio(url);
+        console.log('[TTS] Playing audio:', blob.size, 'bytes');
+
         function done() {
-            clearTimeout(safetyTimeout);
-            isSpeaking = false;
-            resolveOuter();
+            clearTimeout(timeout);
+            URL.revokeObjectURL(url);
+            currentAudio = null;
+            resolve();
         }
 
-        const voiceId = document.getElementById('voice-select').value;
+        currentAudio.onended = () => { console.log('[TTS] Playback ended'); done(); };
+        currentAudio.onerror = (e) => { console.error('[TTS] Audio error:', e); done(); };
+        currentAudio.play().then(() => {
+            console.log('[TTS] Playback started');
+        }).catch((e) => {
+            console.warn('[TTS] Autoplay blocked:', e.message);
+            done();
+        });
+    });
+}
 
-        // Try preloaded blob first, or fetch new from ElevenLabs
-        let blob = null;
-        try {
-            blob = preloadedBlob instanceof Promise ? await preloadedBlob : preloadedBlob;
-        } catch (e) {}
-
-        if (!blob && voiceId) {
-            try {
-                const res = await fetch('/api/tts', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text, voice_id: voiceId })
-                });
-                if (res.ok) {
-                    const contentType = res.headers.get('content-type') || '';
-                    if (contentType.includes('audio')) {
-                        blob = await res.blob();
-                    }
-                }
-            } catch (e) {}
-        }
-
-        // Play ElevenLabs audio
-        if (blob && blob.size > 100) {
-            const url = URL.createObjectURL(blob);
-            currentAudio = new Audio(url);
-            currentAudio.onended = () => { URL.revokeObjectURL(url); currentAudio = null; done(); };
-            currentAudio.onerror = () => { URL.revokeObjectURL(url); currentAudio = null; done(); };
-            try {
-                await currentAudio.play();
-                return; // playing — will resolve via onended
-            } catch (e) {
-                URL.revokeObjectURL(url);
-                currentAudio = null;
-                // Fall through to browser TTS
-            }
-        }
-
-        // Fallback: browser SpeechSynthesis with safety timeout
+function speakBrowserTTS(text) {
+    return new Promise((resolve) => {
+        console.log('[TTS] Falling back to browser TTS');
         try {
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'de-DE';
-            utterance.rate = 1.05;
-            utterance.pitch = 0.95;
+            utterance.rate = 0.9;
+            utterance.pitch = 0.85;
 
             let resolved = false;
             const browserTimeout = setTimeout(() => {
-                if (!resolved) { resolved = true; speechSynthesis.cancel(); done(); }
+                if (!resolved) { resolved = true; speechSynthesis.cancel(); resolve(); }
             }, 8000);
 
-            utterance.onend = () => { if (!resolved) { resolved = true; clearTimeout(browserTimeout); done(); } };
-            utterance.onerror = () => { if (!resolved) { resolved = true; clearTimeout(browserTimeout); done(); } };
+            utterance.onend = () => { if (!resolved) { resolved = true; clearTimeout(browserTimeout); resolve(); } };
+            utterance.onerror = () => { if (!resolved) { resolved = true; clearTimeout(browserTimeout); resolve(); } };
             speechSynthesis.speak(utterance);
         } catch (e) {
-            done();
+            resolve();
         }
     });
 }
@@ -681,39 +708,20 @@ function stopSpeaking() {
     isSpeaking = false;
 }
 
-// ============ Load ElevenLabs Voices ============
+// ============ ElevenLabs Voice Preview ============
 async function loadVoices() {
+    // Fixed voice — no dropdown needed
     const select = document.getElementById('voice-select');
-    try {
-        const res = await fetch('/api/voices');
-        if (!res.ok) throw new Error('API error');
-        availableVoices = await res.json();
-        select.innerHTML = '';
-        if (availableVoices.length === 0) {
-            select.innerHTML = '<option value="">Keine Stimmen gefunden</option>';
-            return;
-        }
-        availableVoices.forEach(v => {
-            const opt = document.createElement('option');
-            opt.value = v.id;
-            const label = v.labels?.accent || v.labels?.gender || v.category || '';
-            opt.textContent = v.name + (label ? ` (${label})` : '');
-            select.appendChild(opt);
-        });
-    } catch (e) {
-        select.innerHTML = '<option value="">ElevenLabs nicht verbunden</option>';
-    }
+    if (select) select.innerHTML = '<option value="ztZBipzb4WQJRDayep3G">ElevenLabs Voice</option>';
 }
 
 async function previewVoice() {
-    const voiceId = document.getElementById('voice-select').value;
-    if (!voiceId) return;
     unlockAudio();
     try {
-        const res = await fetch('/api/tts', {
+        const res = await fetch('/api/tts-elevenlabs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: 'Willkommen beim KI Contact Center. Wie kann ich Ihnen helfen?', voice_id: voiceId })
+            body: JSON.stringify({ text: 'Willkommen beim KI Contact Center. Wie kann ich Ihnen helfen?' })
         });
         if (res.ok) {
             const blob = await res.blob();
